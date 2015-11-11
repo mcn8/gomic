@@ -165,23 +165,27 @@ func readMessages(ws *websocket.Conn) {
 func handleMessage(m Message, ws *websocket.Conn) {
 	fmt.Println(m)
 	if m.Type == "message" {
-		if strings.HasPrefix(m.Text, "gomic add rss") {
+		text := strings.ToLower(m.Text)
+		if strings.HasPrefix(text, "gomic add rss") {
 			addRss(m, ws)
-		} else if strings.HasPrefix(m.Text, "gomic help") {
+		} else if strings.HasPrefix(text, "gomic ls -a") {
+			listAllRss(m.Channel, ws)
+		} else if strings.HasPrefix(text, "gomic ls") {
+			listRssInChannel(m.Channel, ws)
+		} else if strings.HasPrefix(text, "gomic rm") {
+			removeRss(m, ws)
+		} else if strings.HasPrefix(text, "gomic help") {
 			printHelp(m.Channel, ws)
-		} else if strings.HasPrefix(m.Text, "gomic") {
+		} else if strings.HasPrefix(text, "gomic") {
 			sayHi(m.Channel, ws)
 		}
 	}
 }
 
 func addRss(m Message, ws *websocket.Conn) {
-	tokens := strings.Split(m.Text, " ")
-	if len(tokens) <= 3 {
-		sendMessage(m.Channel, "You need more arguments :(", ws)
-	} else {
-		tokens[3] = tokens[3][1 : len(tokens[3])-1]
-		feedUrl := tokens[3]
+	feedUrl := getArgument(m, 3, ws)
+	if feedUrl != "" {
+		feedUrl = feedUrl[1 : len(feedUrl)-1]
 		if govalidator.IsURL(feedUrl) {
 			var newFeed FeedBundle
 			var err error
@@ -205,6 +209,58 @@ func addRss(m Message, ws *websocket.Conn) {
 			sendMessage(m.Channel, "Incorrect url :OoOoOoOo", ws)
 		}
 	}
+}
+
+func getArgument(m Message, position int, ws *websocket.Conn) string {
+	tokens := strings.Split(m.Text, " ")
+	if len(tokens) <= position {
+		sendMessage(m.Channel, "You need more arguments :(", ws)
+		return ""
+	}
+
+	return tokens[position]
+}
+
+func listRssInChannel(channel string, ws *websocket.Conn) {
+	text := getRssInChannel(channel)
+	sendMessage(channel, text, ws)
+}
+
+func getRssInChannel(channel string) string {
+	text := "Listing all feeds in channel <#" + channel + ">"
+
+	channelFeeds := feeds[channel]
+	for _, feed := range channelFeeds {
+		text = text + "\n" + feed.Url
+	}
+
+	return text
+}
+
+func listAllRss(channel string, ws *websocket.Conn) {
+	text := "List all RSS feeds\n\n"
+
+	for c := range feeds {
+		text = text + getRssInChannel(c) + "\n"
+	}
+
+	sendMessage(channel, text, ws)
+}
+
+func removeRss(m Message, ws *websocket.Conn) {
+	urlToRemove := getArgument(m, 2, ws)
+	urlToRemove = urlToRemove[1 : len(urlToRemove)-1]
+	for c, channelFeeds := range feeds {
+		for i, f := range channelFeeds {
+			if f.Url == urlToRemove {
+				feeds[c] = append(channelFeeds[:i], channelFeeds[i+1:]...)
+				sendMessage(m.Channel, urlToRemove+" found and annihilated :fire: :sunglasses: :fire: ", ws)
+				return
+			}
+		}
+	}
+
+	sendMessage(m.Channel, "I couldn't find that one... try again :ambulance:", ws)
 }
 
 func backup() {
@@ -240,6 +296,8 @@ func printHelp(channel string, ws *websocket.Conn) {
 OH! You probably want some help. Here's what I can do:
 
 - "gomic add rss {url}" : adds an rss feed to my database for me to automatically check and post updates in the channel it was added from
+- "gomic ls [-a]" : Lists all the RSS feeds in the channel you're in. If -a flag is given, lists all RSS feeds in slack team"
+- "gomic rm {url}" : removes an rss feed from the database
 - "gomic help" : what you did just now! Prints the help!
 - "gomic" : In case you just wanted to say hi :)`, ws)
 }
