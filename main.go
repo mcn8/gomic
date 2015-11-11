@@ -187,6 +187,14 @@ func addRss(m Message, ws *websocket.Conn) {
 	if feedUrl != "" {
 		feedUrl = feedUrl[1 : len(feedUrl)-1]
 		if govalidator.IsURL(feedUrl) {
+			channelFeeds := feeds[m.Channel]
+			for _, f := range channelFeeds {
+				if f.Url == feedUrl {
+					sendMessage(m.Channel, "Already tracking that url here, no worries homie :snowboarder:", ws)
+					return
+				}
+			}
+
 			var newFeed FeedBundle
 			var err error
 			newFeed.Url = feedUrl
@@ -223,6 +231,9 @@ func getArgument(m Message, position int, ws *websocket.Conn) string {
 
 func listRssInChannel(channel string, ws *websocket.Conn) {
 	text := getRssInChannel(channel)
+	if text == "" {
+		text = "No RSS feeds in this channel :neutral_face:"
+	}
 	sendMessage(channel, text, ws)
 }
 
@@ -234,14 +245,26 @@ func getRssInChannel(channel string) string {
 		text = text + "\n" + feed.Url
 	}
 
-	return text
+	if text == "Listing all feeds in channel <#"+channel+">" {
+		return ""
+	} else {
+		return text
+	}
 }
 
 func listAllRss(channel string, ws *websocket.Conn) {
-	text := "List all RSS feeds\n\n"
+	text := "Listing all RSS feeds\n\n"
 
 	for c := range feeds {
-		text = text + getRssInChannel(c) + "\n"
+		channelText := getRssInChannel(c)
+		if channelText != "" {
+			text = text + getRssInChannel(c) + "\n"
+		}
+	}
+
+	if text == "Listing all RSS feeds\n\n" {
+		fmt.Println(text)
+		text = "Looks like your team doesn't have any RSS feeds at the moment. You should add some! :wink:"
 	}
 
 	sendMessage(channel, text, ws)
